@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <title>链上风控监控大屏</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              bg: "#020617",
+              card: "#020617",
+              accent: "#38bdf8",
+              accentSoft: "rgba(56,189,248,0.2)",
+              danger: "#fb7185",
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="h-full bg-bg text-slate-100">
+    <div id="app" class="min-h-full flex flex-col">
+      <header
+        class="border-b border-slate-800/80 bg-gradient-to-r from-slate-900/80 via-slate-900/40 to-sky-900/40 backdrop-blur-xl"
+      >
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div
+              class="h-9 w-9 rounded-xl bg-gradient-to-tr from-sky-400 to-cyan-300 flex items-center justify-center shadow-lg shadow-sky-500/40"
+            >
+              <span class="text-slate-900 font-black text-lg">链</span>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h1 class="text-lg font-semibold tracking-wide">
+                  链上实时风控监控中心
+                </h1>
+                <span
+                  id="status-badge"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
+                >
+                  <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  实时在线
+                </span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">
+                实时扫链 · 异常交易智能识别 · 专业级风控告警
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-4 text-xs text-slate-400">
+            <div>
+              当前链：
+              <span id="chain-name" class="text-slate-100 font-medium">--</span>
+            </div>
+            <div>
+              最新区块：
+              <span id="latest-block" class="text-slate-100 font-mono">--</span>
+            </div>
+            <div>
+              大额阈值：
+              <span id="threshold" class="text-slate-100 font-mono">--</span> ETH
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="flex-1">
+        <div class="max-w-7xl mx-auto px-6 py-6 space-y-6">
+          <div class="grid gap-6 md:grid-cols-3">
+            <section
+              class="md:col-span-2 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/60 to-slate-950/80 shadow-xl shadow-sky-900/20 overflow-hidden"
+            >
+              <div
+                class="flex items-center justify-between px-5 py-3 border-b border-slate-800/80 bg-slate-900/70"
+              >
+                <div>
+                  <h2 class="text-sm font-medium">实时链上交易流</h2>
+                  <p class="text-[11px] text-slate-400 mt-1">
+                    实时展示主网最新交易，正常交易为默认样式，告警交易将高亮标红。
+                  </p>
+                </div>
+                <div class="flex items-center gap-3 text-xs text-slate-400">
+                  <span class="inline-flex items-center gap-1.5">
+                    <span class="h-1.5 w-1.5 rounded-full bg-sky-400 animate-ping"></span>
+                    <span class="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
+                    实时数据流
+                  </span>
+                </div>
+              </div>
+              <div class="p-4 max-h-[420px] overflow-auto bg-slate-950/40">
+                <div
+                  id="txs-empty"
+                  class="flex flex-col items-center justify-center py-16 text-sm text-slate-500"
+                >
+                  <div
+                    class="h-12 w-12 rounded-full border border-dashed border-slate-700 flex items-center justify-center mb-4"
+                  >
+                    <div
+                      class="h-7 w-7 rounded-full bg-gradient-to-tr from-sky-500/60 to-cyan-400/60 flex items-center justify-center"
+                    >
+                      <span class="text-slate-950 text-xl font-bold">◎</span>
+                    </div>
+                  </div>
+                  <p class="font-medium">正在等待链上最新交易...</p>
+                  <p class="text-xs text-slate-500 mt-2">
+                    一旦连接到节点并开始扫链，这里会实时滚动展示最新交易。
+                  </p>
+                </div>
+                <div id="txs-list" class="space-y-2 hidden"></div>
+              </div>
+            </section>
+
+            <section
+              class="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/70 to-slate-950/90 shadow-xl shadow-sky-900/20 flex flex-col"
+            >
+              <div
+                class="px-5 py-3 border-b border-slate-800/80 bg-slate-900/80 flex items-center justify-between"
+              >
+                <div>
+                  <h2 class="text-sm font-medium">链上运行状态</h2>
+                  <p class="text-[11px] text-slate-400 mt-1">
+                    实时监控链路健康度与节点连接。
+                  </p>
+                </div>
+              </div>
+              <div class="p-4 flex-1 space-y-4">
+                <div
+                  class="rounded-xl border border-slate-800/80 bg-slate-900/70 px-4 py-3 flex items-center justify-between"
+                >
+                  <div>
+                    <p class="text-xs text-slate-400">RPC 节点</p>
+                    <p id="rpc-url" class="text-xs text-slate-300 truncate max-w-[190px]">
+                      --
+                    </p>
+                  </div>
+                  <span
+                    id="rpc-status"
+                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
+                  >
+                    正常
+                  </span>
+                </div>
+
+                <div
+                  class="rounded-xl border border-slate-800/80 bg-slate-900/70 px-4 py-3 space-y-2"
+                >
+                  <p class="text-xs text-slate-400 mb-1">统计概览</p>
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <p class="text-[11px] text-slate-400">今日累计告警</p>
+                      <p
+                        id="stat-alerts-today"
+                        class="mt-1 text-lg font-semibold text-slate-50"
+                      >
+                        0
+                      </p>
+                    </div>
+                    <div>
+                      <p class="text-[11px] text-slate-400">近 10 分钟告警</p>
+                      <p
+                        id="stat-alerts-recent"
+                        class="mt-1 text-lg font-semibold text-slate-50"
+                      >
+                        0
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-1">
+                  <div
+                    class="rounded-xl border border-slate-800/80 bg-slate-900/70 px-4 py-3 space-y-2"
+                  >
+                    <p class="text-xs text-slate-400 mb-1">
+                      块高实时变化
+                    </p>
+                    <div
+                      id="blocks-list"
+                      class="text-[11px] text-slate-300 space-y-1 max-h-28 overflow-auto pr-1"
+                    >
+                      <p class="text-slate-500 text-[11px]">
+                        等待节点返回最新区块高度...
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    class="rounded-xl border border-slate-800/80 bg-slate-900/70 px-4 py-3 space-y-2"
+                  >
+                    <p class="text-xs text-slate-400 mb-1">告警规则</p>
+                    <ul class="text-[11px] text-slate-300 space-y-1 list-disc pl-4">
+                      <li>实时扫描主网最新区块</li>
+                      <li>
+                        单笔转账金额
+                        <span class="text-sky-300 font-semibold"
+                          >&gt;= 阈值（默认 100 ETH）</span
+                        >
+                        触发告警
+                      </li>
+                      <li>告警通过 WebSocket 实时推送至前端</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <section
+            class="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/60 to-slate-950/90 shadow-xl shadow-sky-900/20"
+          >
+            <div
+              class="px-5 py-3 border-b border-slate-800/80 bg-slate-900/70 flex items-center justify-between"
+            >
+              <div>
+                <h2 class="text-sm font-medium">最新交易明细</h2>
+                <p class="text-[11px] text-slate-400 mt-1">
+                  优先展示正常交易，若为告警交易则整行标红并展示触发规则。
+                </p>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-xs text-slate-300">
+                <thead class="bg-slate-900/80 border-b border-slate-800/80">
+                  <tr>
+                    <th class="px-4 py-2 text-left font-medium">时间</th>
+                    <th class="px-4 py-2 text-left font-medium">交易哈希</th>
+                    <th class="px-4 py-2 text-left font-medium">From</th>
+                    <th class="px-4 py-2 text-left font-medium">To</th>
+                    <th class="px-4 py-2 text-right font-medium">金额 (ETH)</th>
+                    <th class="px-4 py-2 text-left font-medium">状态 / 规则</th>
+                  </tr>
+                </thead>
+                <tbody id="txs-table-body" class="divide-y divide-slate-800/80">
+                  <tr>
+                    <td
+                      colspan="6"
+                      class="px-4 py-6 text-center text-[11px] text-slate-500"
+                    >
+                      暂无数据，等待链上交易流推送...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div
+      id="toast-container"
+      class="fixed right-4 top-16 z-50 space-y-2 w-80 pointer-events-none"
+    ></div>
+
+    <script>
+      const apiBase = "http://localhost:4000";
+      let explorerBase = "https://etherscan.io/tx/";
+
+      function fmtTime(ts) {
+        const d = new Date(ts);
+        return (
+          d.getHours().toString().padStart(2, "0") +
+          ":" +
+          d.getMinutes().toString().padStart(2, "0") +
+          ":" +
+          d.getSeconds().toString().padStart(2, "0")
+        );
+      }
+
+      function shortAddr(addr) {
+        if (!addr) return "--";
+        return addr.slice(0, 6) + "..." + addr.slice(-4);
+      }
+
+      function shortHash(hash) {
+        if (!hash) return "--";
+        return hash.slice(0, 10) + "..." + hash.slice(-6);
+      }
+
+      const alertsMemory = [];
+      const txsMemory = [];
+      const blocksMemory = [];
+      let lastBlockNumber = null;
+
+      function renderStats() {
+        const now = Date.now();
+        document.getElementById("stat-alerts-today").textContent =
+          alertsMemory.length.toString();
+
+        const recent = alertsMemory.filter((a) => now - a.createdAt <= 10 * 60 * 1000)
+          .length;
+        document.getElementById("stat-alerts-recent").textContent =
+          recent.toString();
+      }
+
+      function renderBlocks() {
+        const container = document.getElementById("blocks-list");
+        if (!container) return;
+        if (blocksMemory.length === 0) {
+          container.innerHTML =
+            '<p class="text-slate-500 text-[11px]">等待节点返回最新区块高度...</p>';
+          return;
+        }
+        container.innerHTML = "";
+        blocksMemory.slice(0, 20).forEach((b) => {
+          const row = document.createElement("div");
+          row.className =
+            "flex items-center justify-between text-[11px] text-slate-300";
+          row.innerHTML = `
+            <span class="font-mono text-sky-300">#${b.number}</span>
+            <span class="font-mono text-slate-500">${fmtTime(b.ts)}</span>
+          `;
+          container.appendChild(row);
+        });
+      }
+
+      function renderTxPanels() {
+        const list = document.getElementById("txs-list");
+        const empty = document.getElementById("txs-empty");
+        const tbody = document.getElementById("txs-table-body");
+
+        if (txsMemory.length === 0) {
+          empty.classList.remove("hidden");
+          list.classList.add("hidden");
+          tbody.innerHTML =
+            '<tr><td colspan="6" class="px-4 py-6 text-center text-[11px] text-slate-500">暂无交易</td></tr>';
+          return;
+        }
+
+        empty.classList.add("hidden");
+        list.classList.remove("hidden");
+
+        list.innerHTML = "";
+        txsMemory.slice(0, 40).forEach((t) => {
+          const el = document.createElement("div");
+          const isAlert = !!t.isAlert;
+          el.className =
+            "rounded-xl border px-4 py-2.5 flex items-start gap-3 " +
+            (isAlert
+              ? "border-danger/50 bg-gradient-to-r from-danger/15 via-slate-900/80 to-slate-950/90"
+              : "border-slate-800/80 bg-slate-900/70");
+          el.innerHTML = `
+            <div class="mt-1">
+              <span class="inline-flex h-6 w-6 items-center justify-center rounded-full ${
+                isAlert
+                  ? "bg-danger/30 text-danger"
+                  : "bg-sky-500/20 text-sky-300"
+              } text-xs">
+                ${isAlert ? "!" : "Tx"}
+              </span>
+            </div>
+            <div class="flex-1 space-y-1.5">
+              <div class="flex items-center justify-between gap-2">
+                <div class="text-[11px] text-slate-400">
+                  <span class="font-mono text-slate-100 mr-2">${fmtTime(
+                    t.createdAt
+                  )}</span>
+                  ${
+                    isAlert
+                      ? '<span class="px-1.5 py-0.5 rounded-full bg-danger/20 text-danger text-[10px] border border-danger/40">大额交易告警</span>'
+                      : '<span class="px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 text-[10px] border border-sky-500/40">正常交易</span>'
+                  }
+                </div>
+                <div class="text-xs font-semibold text-slate-50">
+                  <span class="${isAlert ? "text-danger" : "text-sky-300"}">${
+            t.valueEth
+          }</span> ETH
+                </div>
+              </div>
+              <div class="text-[11px] text-slate-300 space-y-1.5">
+                <div>TxHash：<a
+                  href="${explorerBase + t.txHash}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="font-mono text-[11px] ${
+                    isAlert ? "text-danger" : "text-sky-300"
+                  } hover:underline"
+                >${shortHash(t.txHash)}</a></div>
+                <div>From：<span class="font-mono text-slate-100">${shortAddr(
+                  t.from
+                )}</span></div>
+                <div>To：<span class="font-mono text-slate-100">${shortAddr(
+                  t.to
+                )}</span></div>
+                ${
+                  isAlert && t.rule
+                    ? `<div class="text-danger text-[11px]">告警规则：${t.rule}</div>`
+                    : ""
+                }
+              </div>
+            </div>
+          `;
+          list.appendChild(el);
+        });
+
+        tbody.innerHTML = "";
+        txsMemory.slice(0, 80).forEach((t) => {
+          const isAlert = !!t.isAlert;
+          const tr = document.createElement("tr");
+          tr.className =
+            "transition-colors " +
+            (isAlert
+              ? "bg-danger/10 hover:bg-danger/20"
+              : "hover:bg-slate-900/70");
+          tr.innerHTML = `
+            <td class="px-4 py-2 font-mono text-[11px] text-slate-300">${fmtTime(
+              t.createdAt
+            )}</td>
+            <td class="px-4 py-2">
+              <a
+                href="${explorerBase + t.txHash}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="font-mono text-[11px] ${
+                  isAlert ? "text-danger" : "text-sky-300"
+                } hover:underline"
+              >${shortHash(t.txHash)}</a>
+            </td>
+            <td class="px-4 py-2 font-mono text-[11px]">${shortAddr(
+              t.from
+            )}</td>
+            <td class="px-4 py-2 font-mono text-[11px]">${shortAddr(
+              t.to
+            )}</td>
+            <td class="px-4 py-2 text-right font-mono text-[11px] ${
+              isAlert ? "text-danger" : "text-sky-300"
+            }">
+              ${t.valueEth}
+            </td>
+            <td class="px-4 py-2 text-[11px] ${
+              isAlert ? "text-danger" : "text-slate-300"
+            }">
+              ${
+                isAlert
+                  ? t.rule || "告警"
+                  : '<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-[10px]">正常</span>'
+              }
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        renderStats();
+      }
+
+      function showAlertToast(alert) {
+        const container = document.getElementById("toast-container");
+        const el = document.createElement("div");
+        el.className =
+          "pointer-events-auto rounded-xl border border-danger/40 bg-slate-900/95 shadow-xl shadow-danger/30 px-4 py-3 text-xs text-slate-100 flex items-start gap-3 animate-[fadeIn_0.2s_ease-out]";
+        el.innerHTML = `
+          <div class="mt-0.5">
+            <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-danger/30 text-danger text-sm">
+              !
+            </span>
+          </div>
+          <div class="flex-1 space-y-1">
+            <div class="flex items-center justify-between gap-2">
+              <p class="font-medium text-[12px]">大额交易告警</p>
+              <span class="font-mono text-[11px] text-slate-400">${fmtTime(
+                alert.createdAt
+              )}</span>
+            </div>
+            <p class="text-[11px] text-slate-300">
+              金额 <span class="text-danger font-semibold">${
+                alert.valueEth
+              } ETH</span> · 规则：${alert.rule || "大额转账"}
+            </p>
+            <p class="text-[11px] text-slate-400 break-all">
+              TxHash：<span class="font-mono">${shortHash(alert.txHash)}</span>
+            </p>
+          </div>
+        `;
+        container.appendChild(el);
+        setTimeout(() => {
+          el.classList.add("opacity-0", "translate-y-1", "transition", "duration-300");
+          setTimeout(() => {
+            container.removeChild(el);
+          }, 320);
+        }, 4000);
+      }
+
+      async function loadStatus() {
+        try {
+          const res = await fetch(apiBase + "/api/status");
+          if (!res.ok) throw new Error("status error");
+          const data = await res.json();
+          document.getElementById("chain-name").textContent =
+            data.name + " (ChainId " + data.chainId + ")";
+          document.getElementById("latest-block").textContent =
+            data.latestBlock;
+          document.getElementById("rpc-url").textContent = data.rpcUrl;
+          document.getElementById("threshold").textContent =
+            data.largeTxThresholdEth;
+
+          // 根据不同链设置默认浏览器地址
+          if (data.chainId === "1") {
+            explorerBase = "https://etherscan.io/tx/";
+          } else if (data.chainId === "5") {
+            explorerBase = "https://goerli.etherscan.io/tx/";
+          } else if (data.chainId === "11155111") {
+            explorerBase = "https://sepolia.etherscan.io/tx/";
+          } else {
+            explorerBase = "https://etherscan.io/tx/";
+          }
+
+          // 记录块高历史
+          if (
+            typeof data.latestBlock === "number" ||
+            (typeof data.latestBlock === "string" &&
+              !Number.isNaN(Number(data.latestBlock)))
+          ) {
+            const num =
+              typeof data.latestBlock === "number"
+                ? data.latestBlock
+                : Number(data.latestBlock);
+            if (lastBlockNumber === null || num > lastBlockNumber) {
+              lastBlockNumber = num;
+              blocksMemory.unshift({ number: num, ts: Date.now() });
+              if (blocksMemory.length > 50) {
+                blocksMemory.splice(50);
+              }
+              renderBlocks();
+            }
+          }
+        } catch (e) {
+          console.error(e);
+          document.getElementById("rpc-status").textContent = "异常";
+          document
+            .getElementById("rpc-status")
+            .classList.remove("bg-emerald-500/10", "text-emerald-300");
+          document
+            .getElementById("rpc-status")
+            .classList.add("bg-danger/10", "text-danger", "border-danger/40");
+          document
+            .getElementById("status-badge")
+            .classList.remove("text-emerald-300", "border-emerald-500/30");
+          document
+            .getElementById("status-badge")
+            .classList.add("text-danger", "border-danger/40");
+        }
+      }
+
+      async function loadInitialData() {
+        try {
+          const [alertsRes, txsRes] = await Promise.all([
+            fetch(apiBase + "/api/alerts"),
+            fetch(apiBase + "/api/txs"),
+          ]);
+          if (alertsRes.ok) {
+            const data = await alertsRes.json();
+            alertsMemory.splice(0, alertsMemory.length, ...(data.alerts || []));
+          }
+          if (txsRes.ok) {
+            const data = await txsRes.json();
+            txsMemory.splice(0, txsMemory.length, ...(data.txs || []));
+          }
+          renderTxPanels();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      function connectWs() {
+        try {
+          const ws = new WebSocket("ws://localhost:4000/ws/alerts");
+          ws.onopen = () => {
+            console.log("WS connected");
+          };
+          ws.onmessage = (event) => {
+            try {
+              const msg = JSON.parse(event.data);
+              if (msg.type === "init" && msg.data) {
+                if (Array.isArray(msg.data.alerts)) {
+                  alertsMemory.splice(0, alertsMemory.length, ...msg.data.alerts);
+                }
+                if (Array.isArray(msg.data.txs)) {
+                  txsMemory.splice(0, txsMemory.length, ...msg.data.txs);
+                }
+                renderTxPanels();
+              } else if (msg.type === "alert" && msg.data) {
+                alertsMemory.unshift(msg.data);
+                txsMemory.unshift(msg.data);
+                renderTxPanels();
+                showAlertToast(msg.data);
+              } else if (msg.type === "tx" && msg.data) {
+                txsMemory.unshift(msg.data);
+                renderTxPanels();
+              }
+            } catch (e) {
+              console.error(e);
+            }
+          };
+          ws.onclose = () => {
+            console.log("WS closed, retrying in 5s");
+            setTimeout(connectWs, 5000);
+          };
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      loadStatus();
+      loadInitialData();
+      connectWs();
+      setInterval(loadStatus, 10000);
+    </script>
+  </body>
+</html>
+
+
