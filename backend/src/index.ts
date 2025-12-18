@@ -22,6 +22,10 @@ const RPC_URL =
 
 const provider = new ethers.JsonRpcProvider(RPC_URL);
 
+// BTC public API (mempool.space). You can override via BTC_API_BASE env.
+const BTC_API_BASE =
+  process.env.BTC_API_BASE || "https://mempool.space/api";
+
 type TxItem = {
   id: string;
   txHash: string;
@@ -39,8 +43,23 @@ type Alert = TxItem;
 const alerts: Alert[] = [];
 const recentTxs: TxItem[] = [];
 
+type BtcTxItem = {
+  id: string;
+  txid: string;
+  valueBtc: string;
+  feeBtc: string;
+  vsize: number;
+  isAlert: boolean;
+  rule?: string;
+  createdAt: number;
+};
+
+const btcTxs: BtcTxItem[] = [];
+const seenBtcTxids = new Set<string>();
+
 // Simple anomaly detection rules
 const LARGE_TX_THRESHOLD_ETH = 100; // example: transactions >= 100 ETH
+const LARGE_TX_THRESHOLD_BTC = 10; // example: transactions >= 10 BTC
 
 async function scanLatestBlocks() {
   let lastScannedBlock: number | null = null;
@@ -107,6 +126,51 @@ async function scanLatestBlocks() {
   }
 }
 
+async function scanBtcMempool() {
+  while (true) {
+    try {
+      const res = await fetch(`${BTC_API_BASE}/mempool/recent`);
+      if (!res.ok) {
+        throw new Error(`BTC mempool api error: ${res.status}`);
+      }
+      const data = (await res.json()) as any[];
+      const now = Date.now();
+
+      for (const item of data) {
+        const txid: string = item.txid;
+        if (!txid || seenBtcTxids.has(txid)) continue;
+        seenBtcTxids.add(txid);
+
+        const valueBtc = Number(item.value || 0) / 1e8;
+        const feeBtc = Number(item.fee || 0) / 1e8;
+        const isAlert = valueBtc >= LARGE_TX_THRESHOLD_BTC;
+
+        const tx: BtcTxItem = {
+          id: `${txid}-${now}`,
+          txid,
+          valueBtc: valueBtc.toFixed(8),
+          feeBtc: feeBtc.toFixed(8),
+          vsize: Number(item.vsize || 0),
+          isAlert,
+          rule: isAlert
+            ? `大额 BTC 转账 >= ${LARGE_TX_THRESHOLD_BTC} BTC`
+            : undefined,
+          createdAt: now,
+        };
+
+        btcTxs.unshift(tx);
+        if (btcTxs.length > 300) btcTxs.splice(300);
+
+        broadcastBtcTx(tx);
+      }
+    } catch (err) {
+      console.error("BTC scan error:", err);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 7000));
+  }
+}
+
 // 静态前端
 const FRONTEND_DIR = path.join(__dirname, "..", "..", "frontend");
 app.use(express.static(FRONTEND_DIR));
@@ -122,6 +186,10 @@ app.get("/api/alerts", (_req, res) => {
 
 app.get("/api/txs", (_req, res) => {
   res.json({ txs: recentTxs });
+});
+
+app.get("/api/btc/txs", (_req, res) => {
+  res.json({ txs: btcTxs });
 });
 
 app.get("/api/status", async (_req, res) => {
@@ -140,6 +208,29 @@ app.get("/api/status", async (_req, res) => {
     });
   } catch (e) {
     res.status(500).json({ error: "Failed to fetch status" });
+  }
+});
+
+app.get("/api/btc/status", async (_req, res) => {
+  try {
+    const [heightRes, mempoolRes] = await Promise.all([
+      fetch(`${BTC_API_BASE}/blocks/tip/height`),
+      fetch(`${BTC_API_BASE}/mempool`),
+    ]);
+    const heightText = await heightRes.text();
+    const height = Number(heightText);
+    const mempool = await mempoolRes.json();
+
+    res.json({
+      chain: "bitcoin",
+      height,
+      mempoolSize: mempool.count,
+      mempoolVsize: mempool.vsize,
+      apiBase: BTC_API_BASE,
+      largeTxThresholdBtc: LARGE_TX_THRESHOLD_BTC,
+    });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to fetch btc status" });
   }
 });
 
@@ -169,6 +260,15 @@ function broadcastTx(tx: TxItem) {
   });
 }
 
+function broadcastBtcTx(tx: BtcTxItem) {
+  const payload = JSON.stringify({ type: "btc_tx", data: tx });
+  wss.clients.forEach((client) => {
+    if ((client as any).readyState === 1) {
+      (client as any).send(payload);
+    }
+  });
+}
+
 wss.on("connection", (ws) => {
   ws.send(
     JSON.stringify({
@@ -176,6 +276,7 @@ wss.on("connection", (ws) => {
       data: {
         alerts: alerts.slice(0, 50),
         txs: recentTxs.slice(0, 200),
+        btcTxs: btcTxs.slice(0, 200),
       },
     })
   );
@@ -183,5 +284,4 @@ wss.on("connection", (ws) => {
 
 // Start background scanner
 scanLatestBlocks().catch((e) => console.error(e));
-
-
+scanBtcMempool().catch((e) => console.error(e));

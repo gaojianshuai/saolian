@@ -247,6 +247,64 @@
               </table>
             </div>
           </section>
+
+          <section
+            class="rounded-2xl border border-danger/40 bg-gradient-to-b from-slate-950/90 via-slate-900/80 to-slate-950/90 shadow-xl shadow-danger/30"
+          >
+            <div
+              class="px-5 py-3 border-b border-slate-800/80 bg-slate-900/80 flex items-center justify-between"
+            >
+              <div>
+                <h2 class="text-sm font-medium">告警交易总览</h2>
+                <p class="text-[11px] text-slate-400 mt-1">
+                  将所有触发告警规则的交易集中展示在左侧，方便随时审阅。
+                </p>
+              </div>
+            </div>
+            <div class="max-h-72 overflow-auto px-4 py-3 space-y-2" id="alerts-side-list">
+              <p class="text-[11px] text-slate-500 text-center py-4">
+                当前暂无告警交易，系统正在实时监控中。
+              </p>
+            </div>
+          </section>
+
+          <section
+            class="rounded-2xl border border-amber-500/40 bg-gradient-to-b from-slate-900/60 to-slate-950/90 shadow-xl shadow-amber-900/30"
+          >
+            <div
+              class="px-5 py-3 border-b border-slate-800/80 bg-slate-900/70 flex items-center justify-between"
+            >
+              <div>
+                <h2 class="text-sm font-medium">BTC 最新交易明细</h2>
+                <p class="text-[11px] text-slate-400 mt-1">
+                  实时展示比特币网络最新交易，大额 BTC 转账将高亮标红。
+                </p>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-xs text-slate-300">
+                <thead class="bg-slate-900/80 border-b border-slate-800/80">
+                  <tr>
+                    <th class="px-4 py-2 text-left font-medium">时间</th>
+                    <th class="px-4 py-2 text-left font-medium">交易哈希</th>
+                    <th class="px-4 py-2 text-right font-medium">金额 (BTC)</th>
+                    <th class="px-4 py-2 text-right font-medium">手续费 (BTC)</th>
+                    <th class="px-4 py-2 text-left font-medium">状态 / 规则</th>
+                  </tr>
+                </thead>
+                <tbody id="btc-txs-table-body" class="divide-y divide-slate-800/80">
+                  <tr>
+                    <td
+                      colspan="5"
+                      class="px-4 py-6 text-center text-[11px] text-slate-500"
+                    >
+                      暂无数据，等待 BTC 链上交易流推送...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </main>
     </div>
@@ -283,6 +341,7 @@
 
       const alertsMemory = [];
       const txsMemory = [];
+      const btcTxsMemory = [];
       const blocksMemory = [];
       let lastBlockNumber = null;
 
@@ -295,6 +354,60 @@
           .length;
         document.getElementById("stat-alerts-recent").textContent =
           recent.toString();
+      }
+
+      function renderAlertSideList() {
+        const container = document.getElementById("alerts-side-list");
+        if (!container) return;
+
+        if (alertsMemory.length === 0) {
+          container.innerHTML =
+            '<p class="text-[11px] text-slate-500 text-center py-4">当前暂无告警交易，系统正在实时监控中。</p>';
+          return;
+        }
+
+        container.innerHTML = "";
+        alertsMemory.slice(0, 80).forEach((a) => {
+          const el = document.createElement("div");
+          el.className =
+            "rounded-xl border border-danger/40 bg-gradient-to-r from-danger/20 via-slate-900/80 to-slate-950/90 px-3 py-2.5 flex items-start gap-3";
+          el.innerHTML = `
+            <div class="mt-0.5">
+              <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-danger/30 text-danger text-xs">
+                !
+              </span>
+            </div>
+            <div class="flex-1 space-y-1">
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-mono text-[11px] text-slate-200">${fmtTime(
+                  a.createdAt
+                )}</span>
+                <span class="text-[11px] text-danger font-semibold">${a.valueEth} ETH</span>
+              </div>
+              <div class="text-[11px] text-slate-300">
+                <div class="truncate">
+                  TxHash：
+                  <a
+                    href="${explorerBase + a.txHash}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="font-mono text-[11px] text-danger hover:underline"
+                  >${shortHash(a.txHash)}</a>
+                </div>
+                <div class="truncate">
+                  From：<span class="font-mono text-slate-100">${shortAddr(a.from)}</span>
+                </div>
+                <div class="truncate">
+                  To：<span class="font-mono text-slate-100">${shortAddr(a.to)}</span>
+                </div>
+                <div class="text-[11px] text-danger mt-0.5">
+                  规则：${a.rule || "大额转账告警"}
+                </div>
+              </div>
+            </div>
+          `;
+          container.appendChild(el);
+        });
       }
 
       function renderBlocks() {
@@ -445,6 +558,62 @@
         });
 
         renderStats();
+        renderAlertSideList();
+      }
+
+      function renderBtcPanels() {
+        const tbody = document.getElementById("btc-txs-table-body");
+        if (!tbody) return;
+
+        if (btcTxsMemory.length === 0) {
+          tbody.innerHTML =
+            '<tr><td colspan="5" class="px-4 py-6 text-center text-[11px] text-slate-500">暂无 BTC 交易</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = "";
+        btcTxsMemory.slice(0, 80).forEach((t) => {
+          const isAlert = !!t.isAlert;
+          const tr = document.createElement("tr");
+          tr.className =
+            "transition-colors " +
+            (isAlert
+              ? "bg-danger/10 hover:bg-danger/20"
+              : "hover:bg-slate-900/70");
+          tr.innerHTML = `
+            <td class="px-4 py-2 font-mono text-[11px] text-slate-300">${fmtTime(
+              t.createdAt
+            )}</td>
+            <td class="px-4 py-2">
+              <a
+                href="${"https://mempool.space/tx/" + t.txid}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="font-mono text-[11px] ${
+                  isAlert ? "text-danger" : "text-amber-300"
+                } hover:underline"
+              >${shortHash(t.txid)}</a>
+            </td>
+            <td class="px-4 py-2 text-right font-mono text-[11px] ${
+              isAlert ? "text-danger" : "text-amber-300"
+            }">
+              ${t.valueBtc}
+            </td>
+            <td class="px-4 py-2 text-right font-mono text-[11px] text-slate-300">
+              ${t.feeBtc}
+            </td>
+            <td class="px-4 py-2 text-[11px] ${
+              isAlert ? "text-danger" : "text-slate-300"
+            }">
+              ${
+                isAlert
+                  ? t.rule || "BTC 告警"
+                  : '<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-[10px]">正常</span>'
+              }
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
       }
 
       function showAlertToast(alert) {
@@ -547,9 +716,10 @@
 
       async function loadInitialData() {
         try {
-          const [alertsRes, txsRes] = await Promise.all([
+          const [alertsRes, txsRes, btcTxsRes] = await Promise.all([
             fetch(apiBase + "/api/alerts"),
             fetch(apiBase + "/api/txs"),
+            fetch(apiBase + "/api/btc/txs"),
           ]);
           if (alertsRes.ok) {
             const data = await alertsRes.json();
@@ -559,7 +729,12 @@
             const data = await txsRes.json();
             txsMemory.splice(0, txsMemory.length, ...(data.txs || []));
           }
+          if (btcTxsRes.ok) {
+            const data = await btcTxsRes.json();
+            btcTxsMemory.splice(0, btcTxsMemory.length, ...(data.txs || []));
+          }
           renderTxPanels();
+          renderBtcPanels();
         } catch (e) {
           console.error(e);
         }
@@ -581,7 +756,11 @@
                 if (Array.isArray(msg.data.txs)) {
                   txsMemory.splice(0, txsMemory.length, ...msg.data.txs);
                 }
+                if (Array.isArray(msg.data.btcTxs)) {
+                  btcTxsMemory.splice(0, btcTxsMemory.length, ...msg.data.btcTxs);
+                }
                 renderTxPanels();
+                renderBtcPanels();
               } else if (msg.type === "alert" && msg.data) {
                 alertsMemory.unshift(msg.data);
                 txsMemory.unshift(msg.data);
@@ -590,6 +769,9 @@
               } else if (msg.type === "tx" && msg.data) {
                 txsMemory.unshift(msg.data);
                 renderTxPanels();
+              } else if (msg.type === "btc_tx" && msg.data) {
+                btcTxsMemory.unshift(msg.data);
+                renderBtcPanels();
               }
             } catch (e) {
               console.error(e);
